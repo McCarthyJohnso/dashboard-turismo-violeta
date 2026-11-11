@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-# Turismo Violeta, visualizador del screening V18.
+# Turismo Violeta, visualizador de diagnósticos Kobo V18 y V19.
 # Notas de mantenimiento (comentarios para que Streamlit no los muestre).
-# Archivo principal autónomo: streamlit run visualizador_turismo_violeta_v18.py
+# Archivo principal autónomo: streamlit run app.py
 # Dependencias (las mismas del visualizador original):
 #     streamlit>=1.50,<2 pandas>=2.2,<4
 #     plotly>=5.24,<8 openpyxl>=3.1,<4
 # Secrets existentes: KOBO_DATA_URL, KOBO_TOKEN, ADMIN_PASSWORD.
-# KOBO_DATA_URL es opcional: la fuente predeterminada es la exportación TURISMO V18.
+# KOBO_DATA_URL es opcional: la fuente predeterminada es la exportación TURISMO.
 # La URL de la antigua exportación facilitada en esta revisión se migra a TURISMO.
 # Otros opcionales: COMPANY_COLUMN, ACCESS_CODE_COLUMN, PROVINCE_COLUMN, KOBO_FORM_URL.
 # No incluir credenciales en este archivo. ADMIN_PASSWORD no tiene valor por defecto.
 #
 # La lógica analítica usa la biblioteca estándar y puede importarse sin Streamlit.
-# Los indicadores antiguos no se convierten al modelo V18. El cálculo se reconstruye
+# Cada registro se evalúa con su modelo original. El cálculo se reconstruye
 # desde las respuestas, se contrasta con sc_* y se muestra la calidad por separado.
 
 import csv
@@ -32,7 +32,7 @@ from urllib.parse import urljoin, urlsplit
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
-APP_VERSION = 'v23.8 · diagnóstico V18, perfil radar y tabla por provincia'
+APP_VERSION = 'v24.1 · diagnósticos Kobo V18 y V19'
 MODEL_VERSION = 'TV_SCREENING_20261021_V18_VMT'
 DASHBOARD_URL = 'https://dashboard-turismo-violeta.streamlit.app/'
 SCREENING_SPEC = {'dimensions': [{'id': 1, 'title': 'Gobernanza, compromiso institucional y liderazgo', 'weight': 15},
@@ -1013,20 +1013,836 @@ PLAN_STAGES = (
     ('implementado', 'Plan de igualdad de género implementado.', 'Confirmar o iniciar la implementación del plan. '),
     ('comunicado', 'Plan de igualdad de género comunicado.', 'Confirmar o realizar la comunicación del plan. '),
 )
+
+MODEL_V19 = 'TV_SCREENING_20261109_V19_VMT'
+V19_DIMENSIONS = [{'id': 1, 'title': 'Gobernanza, compromiso institucional y liderazgo', 'weight': 15},
+ {'id': 2, 'title': 'Corresponsabilidad de los cuidados y bienestar', 'weight': 10},
+ {'id': 3, 'title': 'Cadena de valor, proveedores, comunidades y territorio', 'weight': 10},
+ {'id': 4, 'title': 'Experiencias turísticas con enfoque de igualdad de género', 'weight': 20},
+ {'id': 5,
+  'title': 'Prevención y respuesta frente a la violencia basada en género, el acoso y la discriminación',
+  'weight': 30},
+ {'id': 6, 'title': 'Igualdad laboral, desarrollo profesional y trabajo digno', 'weight': 15}]
+V19_FIELDS = {'weps_31': '¿La empresa u organización turística cuenta con un plan de igualdad de género vigente o '
+            'con otras herramientas de planificación para la igualdad de género?',
+ 'weps_06': '¿La empresa u organización turística ha designado una instancia responsable (Comité de '
+            'Género u otra) o punto focal, con funciones definidas para implementar acciones de '
+            'igualdad de género?',
+ 'weps_05': '¿Las empresas u organizaciones aplican medidas concretas para aumentar la participación de '
+            'las mujeres en cargos de liderazgo, administración o de toma de decisiones o áreas donde '
+            'participan mayoritariamente los hombres en el sector turístico?',
+ 'weps_28': '¿La organización turística monitorea y sistematiza las acciones del Plan de Igualdad, '
+            'revisa al menos anualmente sus avances y adopta decisiones o ajustes con base en los '
+            'resultados?',
+ 'weps_30': '¿La empresa u organización comunica sus acciones y avances en igualdad de género mediante '
+            'documentos de respaldo?',
+ 'weps_33': '¿La empresa u organización identifica anualmente las necesidades de cuidado y conciliación '
+            'de su personal, considerando niñas y niños, adultos mayores, personas con discapacidad y '
+            'personas con movilidad reducida?',
+ 'weps_07': '¿La empresa u organización turística cumple con los derechos de maternidad, paternidad, '
+            'lactancia y los permisos de cuidado, incluidos los servicios de cuidado infantil y los '
+            'espacios de lactancia que le correspondan según su régimen laboral y sus obligaciones?',
+ 'weps_08': '¿La empresa u organización aplica medidas de organización del trabajo que facilitan la '
+            'conciliación y los cuidados, como flexibilidad horaria, permisos, adaptación de turnos, '
+            'teletrabajo o retorno progresivo?',
+ 'weps_35': '¿La empresa u organización registra la aplicación de las acciones, medidas, y/o '
+            'estrategias de cuidado que han sido requeridas por hombres y mujeres?',
+ 'tv_cuidados_comunicacion': '¿La empresa u organización comunica las acciones, medidas o estrategias '
+                             'de cuidado aplicadas?',
+ 'weps_39': '¿La empresa u organización implementa medidas para priorizar o facilitar la participación '
+            'de empresas y/o emprendimientos liderados por mujeres, organizaciones comunitarias y '
+            'proveedores locales en su cadena de valor?',
+ 'weps_24': '¿La empresa u organización turística incorpora criterios y compromisos de igualdad de '
+            'género y prevención de violencia y/o acoso en la selección y vinculación con proveedores?',
+ 'tv_proveedores_respuesta_vbg': '¿La empresa u organización cuenta con procedimiento de actuación ante '
+                                 'situaciones de violencia de género, acoso, abuso o discriminación?',
+ 'weps_21': '¿La empresa u organización implementa acciones para fortalecer las capacidades de sus '
+            'proveedores locales (grupos de mujeres) en su cadena de valor?',
+ 'weps_26': '¿La empresa u organización turística establece y cumple condiciones claras de remuneración '
+            'y pago con sus proveedores y comunidades, reconociendo el aporte de las mujeres en los '
+            'servicios prestados?',
+ 'weps_27': 'La empresa u organización turística acuerda la difusión de los saberes ancestrales de '
+            'mujeres vinculados con la conservación y el patrimonio cultural, uso de conocimientos, '
+            'imágenes y/o expresiones culturales.',
+ 'weps_36': '¿La empresa u organización turística aplica medidas para que mujeres y hombres que '
+            'utilizan y/o visitan sus servicios tengan las mismas oportunidades de participar en las '
+            'actividades de la experiencia turística?',
+ 'weps_37': '¿La empresa u organización turística informa a sus visitantes sobre códigos de conducta '
+            'que promueven la igualdad y la no discriminación durante la experiencia turística?',
+ 'weps_38': '¿La empresa u organización turística recoge la opinión de sus visitantes, de manera '
+            'desagregada entre hombres y mujeres, para conocer su percepción sobre el acceso y disfrute '
+            'de los servicios?',
+ 'weps_23': '¿La experiencia turística reconoce, rescata y da a conocer los aportes y saberes de las '
+            'mujeres en la historia y en la cultura local durante las actividades?',
+ 'weps_22': '¿La empresa u organización turística cuenta con lineamientos para asegurar el uso de '
+            'lenguaje, imágenes y mensajes libres de estereotipos y de discriminación contra las '
+            'mujeres para presentar y desarrollar sus experiencias turísticas?',
+ 'weps_09': '¿La empresa u organización cuenta con una política o declaración vigente de cero '
+            'tolerancia frente a la violencia basada en género, el acoso laboral?',
+ 'weps_12': '¿La empresa u organización dispone de un protocolo o procedimiento escrito para prevenir y '
+            'actuar frente a violencia basada en género, acoso laboral, acoso sexual y discriminación '
+            'en el sector turismo?',
+ 'weps_15': '¿La empresa u organización turística dispone de canales de reporte accesibles y '
+            'confidenciales y rutas internas y externas de actuación y derivación para casos de '
+            'violencia de género, acoso laboral y discriminación?',
+ 'weps_16': '¿La organización turística cuenta con el protocolo de actuación en casos de trata de '
+            'personas con fines de explotación sexual, con especial atención en niños/niñas y '
+            'adolescentes para reportar a las autoridades competentes?',
+ 'weps_17': '¿El personal de la empresa u organización turística y las personas responsables de recibir '
+            'reportes y activar rutas, han recibido capacitación específica durante los últimos doce '
+            'meses sobre violencia basada en género, acoso laboral, acoso sexual y/o discriminación?',
+ 'weps_01': 'La empresa u organización aplica procedimientos de selección y contratación con criterios '
+            'de igualdad y no discriminación.',
+ 'weps_02': '¿La empresa u organización aplica criterios de igualdad de género para la '
+            'promoción/ascenso y el desarrollo profesional, y analiza ascensos, cambios de cargo y '
+            'acceso a capacitación con datos desagregados por sexo?',
+ 'weps_03': '¿La empresa u organización promueve la igualdad de género en el acceso a procesos de '
+            'capacitación y formación para fortalecer el perfil profesional?',
+ 'weps_04': '¿La empresa u organización analiza anualmente las remuneraciones para identificar y '
+            'corregir diferencias salariales entre mujeres y hombres en trabajos iguales o de igual '
+            'valor?',
+ 'weps_18': '¿La empresa u organización turística realiza capacitaciones para que su personal promueva '
+            'la igualdad entre mujeres y hombres en el trabajo y en los servicios turísticos?',
+ 'tv_riesgos_laborales_genero': '¿La empresa u organización turística identifica si las tareas, los '
+                                'espacios, la carga de trabajo o los equipos de protección presentan '
+                                'riesgos diferentes para mujeres y hombres?',
+ 'tv_opiniones_mejoras': '¿La empresa u organización turística utiliza las opiniones de sus visitantes '
+                         'para incorporar mejoras que promuevan la igualdad de género y la no '
+                         'discriminación en la experiencia turística?',
+ 'tv_politica_aprobada_difundida': '¿La política ha sido aprobada y difundida?',
+ 'tv_seleccion_competencias': '¿La empresa u organización turística selecciona y contrata personal según los conocimientos y capacidades que requiere el trabajo?',
+ 'tv_prevencion_riesgos_laborales': '¿La empresa u organización turística aplica medidas para prevenir '
+                                    'los riesgos identificados, considerando las necesidades de mujeres '
+                                    'y hombres?',
+ 'tv_plan_vigente': '¿La organización turística cuenta con un plan de igualdad de género vigente?',
+ 'tv_carta_compromiso_alojamiento': '¿Su establecimiento cuenta con la suscripción de la carta de '
+                                    'compromiso que contienen las obligaciones al Código de Conducta '
+                                    'para la prevención de la explotación sexual de niñas, niños y '
+                                    'adolescentes, en establecimientos de alojamiento turístico?',
+ 'tv_plan_etapas': '¿El plan de igualdad de género ha sido redactado, aprobado, implementado, '
+                   'comunicado?'}
+PREVIOUS_SELECTION_LABEL = '¿La empresa u organización turística selecciona y contrata personal según los conocimientos y capacidades que requiere el trabajo, sin establecer preferencias por ser mujer u hombre?'
+V19_PAIRS = {'weps_38': 'tv_opiniones_mejoras',
+ 'weps_09': 'tv_politica_aprobada_difundida',
+ 'weps_01': 'tv_seleccion_competencias',
+ 'tv_riesgos_laborales_genero': 'tv_prevencion_riesgos_laborales'}
+V19_QUESTIONS = [{'num': 31,
+  'name': 'weps_31',
+  'dim': 1,
+  'dimension': 'Gobernanza, compromiso institucional y liderazgo',
+  'weight': 20.0,
+  'question': '¿La empresa u organización turística cuenta con un plan de igualdad de género vigente o '
+              'con otras herramientas de planificación para la igualdad de género?',
+  'help': 'Responder Sí si existe un plan vigente de igualdad de género u otra herramienta de '
+          'planificación para la igualdad. Las etapas del plan se registran a continuación y no se '
+          'suponen por esta respuesta.',
+  'positive': 'Plan de igualdad de género u otra herramienta de planificación vigente declarada.',
+  'action': 'Definir una herramienta inicial de planificación para la igualdad de género con objetivos, '
+            'acciones y responsables.',
+  'wep': 1,
+  'secondary': '',
+  'objective': 'O03, gobernanza',
+  'limit': 'Identifica la existencia de un plan o de otra herramienta de planificación. No acredita '
+           'aprobación, implementación o comunicación: estas etapas se recogen en una selección '
+           'múltiple complementaria. No calcula I047 ni ejecución del plan.',
+  'gate': '',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P1'},
+ {'num': 6,
+  'name': 'weps_06',
+  'dim': 1,
+  'dimension': 'Gobernanza, compromiso institucional y liderazgo',
+  'weight': 25.0,
+  'question': '¿La empresa u organización turística ha designado una instancia responsable (Comité de '
+              'Género u otra) o punto focal, con funciones definidas para implementar acciones de '
+              'igualdad de género?',
+  'help': 'Puede tratarse de un Comité de Género, otra instancia o un punto focal. Responder Sí si se '
+          'ha designado y tiene funciones definidas para implementar acciones de igualdad de género.',
+  'positive': 'Instancia responsable o punto focal designado con funciones de implementación de '
+              'acciones de igualdad de género.',
+  'action': 'Designar una instancia responsable o punto focal y definir sus funciones para implementar '
+            'acciones de igualdad de género.',
+  'wep': 1,
+  'secondary': '',
+  'objective': 'O03, gobernanza',
+  'limit': 'Identifica designación y funciones, sin exigir una figura única ni una formalidad adicional '
+           'a la redacción definitiva. No calcula composición del Comité, número de actas ni cobertura '
+           'de sus acciones.',
+  'gate': '',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P2'},
+ {'num': 5,
+  'name': 'weps_05',
+  'dim': 1,
+  'dimension': 'Gobernanza, compromiso institucional y liderazgo',
+  'weight': 20.0,
+  'question': '¿Las empresas u organizaciones aplican medidas concretas para aumentar la participación '
+              'de las mujeres en cargos de liderazgo, administración o de toma de decisiones o áreas '
+              'donde participan mayoritariamente los hombres en el sector turístico?',
+  'help': 'Considerar medidas concretas en liderazgo, administración, decisiones o áreas del sector '
+          'turístico donde participan mayoritariamente los hombres.',
+  'positive': 'Medidas concretas para aumentar la participación de mujeres en liderazgo, '
+              'administración, decisiones o áreas de predominio masculino.',
+  'action': 'Identificar una barrera y aplicar una medida de participación de mujeres en liderazgo, '
+            'administración, decisiones o áreas de predominio masculino.',
+  'wep': 1,
+  'secondary': '4',
+  'objective': 'O01/O02, liderazgo',
+  'limit': 'No calcula I007 ni porcentaje de mujeres en liderazgo; faltan personas por sexo y nivel.',
+  'gate': 'emplea_personal',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P3'},
+ {'num': 28,
+  'name': 'weps_28',
+  'dim': 1,
+  'dimension': 'Gobernanza, compromiso institucional y liderazgo',
+  'weight': 20.0,
+  'question': '¿La organización turística monitorea y sistematiza las acciones del Plan de Igualdad, '
+              'revisa al menos anualmente sus avances y adopta decisiones o ajustes con base en los '
+              'resultados?',
+  'help': '',
+  'positive': 'Seguimiento y revisión al menos anual del plan de igualdad, con decisiones o ajustes '
+              'basados en los resultados.',
+  'action': 'Monitorear y sistematizar las acciones del plan y revisar sus avances al menos una vez al '
+            'año.',
+  'wep': 7,
+  'secondary': '',
+  'objective': 'O12, seguimiento',
+  'limit': 'Registra si la organización declara la práctica descrita en esta pregunta.',
+  'gate': '',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P4'},
+ {'num': 30,
+  'name': 'weps_30',
+  'dim': 1,
+  'dimension': 'Gobernanza, compromiso institucional y liderazgo',
+  'weight': 15.0,
+  'question': '¿La empresa u organización comunica sus acciones y avances en igualdad de género '
+              'mediante documentos de respaldo?',
+  'help': '',
+  'positive': 'Acciones y avances en igualdad de género comunicados con documentos de respaldo.',
+  'action': 'Reunir documentos que respalden las acciones y avances en igualdad de género y utilizarlos '
+            'para su comunicación.',
+  'wep': 7,
+  'secondary': '',
+  'objective': 'O13, comunicación de avances',
+  'limit': 'Identifica comunicación respaldada documentalmente. No requiere carácter público, '
+           'periodicidad anual o formato de informe. El detalle opcional no puntúa ni calcula número de '
+           'informes o I048.',
+  'gate': '',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P5'},
+ {'num': 33,
+  'name': 'weps_33',
+  'dim': 2,
+  'dimension': 'Corresponsabilidad de los cuidados y bienestar',
+  'weight': 15.0,
+  'question': '¿La empresa u organización identifica anualmente las necesidades de cuidado y '
+              'conciliación de su personal, considerando niñas y niños, adultos mayores, personas con '
+              'discapacidad y personas con movilidad reducida?',
+  'help': 'Considerar una identificación realizada durante los últimos doce meses e incluir niñas y '
+          'niños, adultos mayores, personas con discapacidad y personas con movilidad reducida.',
+  'positive': 'Necesidades de cuidado y conciliación del personal identificadas anualmente.',
+  'action': 'Realizar y registrar una revisión anual de las necesidades de cuidado y conciliación del '
+            'personal.',
+  'wep': 2,
+  'secondary': '',
+  'objective': 'Cuidados y conciliación',
+  'limit': 'No mide personas beneficiarias, cobertura ni uso efectivo de apoyos.',
+  'gate': 'emplea_personal',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P6'},
+ {'num': 7,
+  'name': 'weps_07',
+  'dim': 2,
+  'dimension': 'Corresponsabilidad de los cuidados y bienestar',
+  'weight': 40.0,
+  'question': '¿La empresa u organización turística cumple con los derechos de maternidad, paternidad, '
+              'lactancia y los permisos de cuidado, incluidos los servicios de cuidado infantil y los '
+              'espacios de lactancia que le correspondan según su régimen laboral y sus obligaciones?',
+  'help': '',
+  'positive': 'Derechos de maternidad, paternidad, lactancia y permisos de cuidado atendidos conforme a '
+              'las obligaciones aplicables.',
+  'action': 'Revisar los derechos, permisos, servicios de cuidado infantil y espacios de lactancia '
+            'exigibles según el régimen laboral.',
+  'wep': 2,
+  'secondary': '',
+  'objective': 'Cuidados y conciliación',
+  'limit': 'Registra si la organización declara la práctica descrita en esta pregunta.',
+  'gate': 'emplea_personal',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P7'},
+ {'num': 8,
+  'name': 'weps_08',
+  'dim': 2,
+  'dimension': 'Corresponsabilidad de los cuidados y bienestar',
+  'weight': 15.0,
+  'question': '¿La empresa u organización aplica medidas de organización del trabajo que facilitan la '
+              'conciliación y los cuidados, como flexibilidad horaria, permisos, adaptación de turnos, '
+              'teletrabajo o retorno progresivo?',
+  'help': 'Considerar medidas disponibles de organización del trabajo, como flexibilidad horaria, '
+          'permisos, adaptación de turnos o retorno progresivo. No se exige que todas las modalidades '
+          'sean viables.',
+  'positive': 'Medidas de organización del trabajo para conciliación y cuidados.',
+  'action': 'Definir una medida viable de organización del trabajo que responda a las responsabilidades '
+            'de cuidado del personal.',
+  'wep': 2,
+  'secondary': '',
+  'objective': 'Cuidados y conciliación',
+  'limit': 'No calcula cobertura de flexibilidad, horas ni personas que la utilizan.',
+  'gate': 'emplea_personal',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P8'},
+ {'num': 35,
+  'name': 'weps_35',
+  'dim': 2,
+  'dimension': 'Corresponsabilidad de los cuidados y bienestar',
+  'weight': 7.5,
+  'question': '¿La empresa u organización registra la aplicación de las acciones, medidas, y/o '
+              'estrategias de cuidado que han sido requeridas por hombres y mujeres?',
+  'help': 'Considerar registros de medidas solicitadas y efectivamente aplicadas, reconociendo los '
+          'requerimientos de mujeres y hombres. Su comunicación se pregunta por separado.',
+  'positive': 'Aplicación de acciones, medidas o estrategias de cuidado requeridas por mujeres y '
+              'hombres registrada.',
+  'action': 'Crear o completar un registro de las medidas de cuidado solicitadas y aplicadas, '
+            'distinguiendo los requerimientos de mujeres y hombres.',
+  'wep': 2,
+  'secondary': '',
+  'objective': 'Cuidados y conciliación',
+  'limit': 'Identifica el registro de la aplicación de medidas de cuidado. No mide su comunicación, '
+           'cantidad, cobertura o igualdad de uso por sexo.',
+  'gate': 'emplea_personal',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P10'},
+ {'num': 42,
+  'name': 'tv_cuidados_comunicacion',
+  'dim': 2,
+  'dimension': 'Corresponsabilidad de los cuidados y bienestar',
+  'weight': 7.5,
+  'question': '¿La empresa u organización comunica las acciones, medidas o estrategias de cuidado '
+              'aplicadas?',
+  'help': 'Responder sobre la comunicación de las acciones, medidas o estrategias de cuidado aplicadas. '
+          'La existencia del registro no sustituye esta comunicación.',
+  'positive': 'Acciones, medidas o estrategias de cuidado aplicadas comunicadas.',
+  'action': 'Comunicar al personal las acciones, medidas o estrategias de cuidado aplicadas.',
+  'wep': 2,
+  'secondary': '',
+  'objective': 'Cuidados y conciliación',
+  'limit': 'Identifica comunicación de las medidas de cuidado aplicadas. No calcula alcance de la '
+           'comunicación, personas informadas ni cobertura de medidas.',
+  'gate': 'emplea_personal',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P10b'},
+ {'num': 39,
+  'name': 'weps_39',
+  'dim': 3,
+  'dimension': 'Cadena de valor, proveedores, comunidades y territorio',
+  'weight': 25.0,
+  'question': '¿La empresa u organización implementa medidas para priorizar o facilitar la '
+              'participación de empresas y/o emprendimientos liderados por mujeres, organizaciones '
+              'comunitarias y proveedores locales en su cadena de valor?',
+  'help': 'Considerar medidas para priorizar o facilitar la participación de negocios liderados por '
+          'mujeres, organizaciones comunitarias y proveedores locales, según los vínculos existentes.',
+  'positive': 'Medidas para priorizar o facilitar la participación de negocios de mujeres, '
+              'organizaciones comunitarias y proveedores locales.',
+  'action': 'Definir y aplicar una medida para facilitar la participación de negocios de mujeres, '
+            'organizaciones comunitarias o proveedores locales.',
+  'wep': 5,
+  'secondary': '6',
+  'objective': 'O09, compras y proveedores',
+  'limit': 'Identifica medidas de inclusión en la cadena de valor. No calcula I038 ni porcentaje de '
+           'proveedoras sin importes y proveedores comerciales.',
+  'gate': '',
+  'gates_any': ['tiene_proveedores', 'vinculo_comunidad'],
+  'critical': False,
+  'source_item': 'P11'},
+ {'num': 24,
+  'name': 'weps_24',
+  'dim': 3,
+  'dimension': 'Cadena de valor, proveedores, comunidades y territorio',
+  'weight': 15.0,
+  'question': '¿La empresa u organización turística incorpora criterios y compromisos de igualdad de '
+              'género y prevención de violencia y/o acoso en la selección y vinculación con '
+              'proveedores?',
+  'help': 'Valorar los criterios y compromisos utilizados en la selección y vinculación con '
+          'proveedores. La actuación ante situaciones de violencia, acoso, abuso o discriminación se '
+          'registra en la siguiente pregunta.',
+  'positive': 'Criterios y compromisos de igualdad de género y prevención de violencia o acoso en la '
+              'vinculación con proveedores.',
+  'action': 'Incluir criterios y compromisos de igualdad de género y prevención de violencia o acoso en '
+            'la selección y vinculación con proveedores.',
+  'wep': 5,
+  'secondary': '',
+  'objective': 'O09, compras y proveedores',
+  'limit': 'Identifica criterios y compromisos con proveedores; la respuesta a incidentes se recoge por '
+           'separado. No calcula I037 ni cobertura de proveedores sin recuentos.',
+  'gate': 'tiene_proveedores',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P12'},
+ {'num': 43,
+  'name': 'tv_proveedores_respuesta_vbg',
+  'dim': 3,
+  'dimension': 'Cadena de valor, proveedores, comunidades y territorio',
+  'weight': 10.0,
+  'question': '¿La empresa u organización cuenta con procedimiento de actuación ante situaciones de '
+              'violencia de género, acoso, abuso o discriminación?',
+  'help': 'En esta dimensión se valora la aplicación del procedimiento a la relación con proveedores. '
+          'Puede apoyarse en el procedimiento general siempre que defina cómo actuar en esa relación. '
+          'El procedimiento general se valora por separado en prevención y respuesta a la VBG.',
+  'positive': 'Procedimiento de actuación ante violencia de género, acoso, abuso o discriminación '
+              'aplicable a la relación con proveedores.',
+  'action': 'Definir cómo actuar ante violencia de género, acoso, abuso o discriminación en la '
+            'vinculación con proveedores.',
+  'wep': 5,
+  'secondary': '3',
+  'objective': 'O09, vinculación con proveedores; aporte a O05 en respuesta a incidentes',
+  'limit': 'Identifica la aplicación del procedimiento a la relación con proveedores. No sustituye '
+           'weps_12 ni supone su cumplimiento; no calcula casos, tiempos o eficacia de la respuesta.',
+  'gate': 'tiene_proveedores',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P12b'},
+ {'num': 21,
+  'name': 'weps_21',
+  'dim': 3,
+  'dimension': 'Cadena de valor, proveedores, comunidades y territorio',
+  'weight': 15.0,
+  'question': '¿La empresa u organización implementa acciones para fortalecer las capacidades de sus '
+              'proveedores locales (grupos de mujeres) en su cadena de valor?',
+  'help': 'Responder sobre acciones realizadas para fortalecer capacidades de proveedores locales '
+          'conformados por grupos de mujeres, dentro de la cadena de valor.',
+  'positive': 'Acciones de fortalecimiento de capacidades de proveedores locales conformados por grupos '
+              'de mujeres.',
+  'action': 'Identificar una necesidad de los grupos de mujeres proveedoras locales y realizar una '
+            'acción de fortalecimiento de sus capacidades.',
+  'wep': 4,
+  'secondary': '5',
+  'objective': 'O06, formación de proveedoras',
+  'limit': 'No calcula número de actividades ni personas formadas.',
+  'gate': 'tiene_proveedores',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P13'},
+ {'num': 26,
+  'name': 'weps_26',
+  'dim': 3,
+  'dimension': 'Cadena de valor, proveedores, comunidades y territorio',
+  'weight': 20.0,
+  'question': '¿La empresa u organización turística establece y cumple condiciones claras de '
+              'remuneración y pago con sus proveedores y comunidades, reconociendo el aporte de las '
+              'mujeres en los servicios prestados?',
+  'help': 'Responder sobre condiciones claras de remuneración y pago establecidas y cumplidas, '
+          'reconociendo el aporte de las mujeres en los servicios prestados.',
+  'positive': 'Condiciones claras de remuneración y pago establecidas y cumplidas, con reconocimiento '
+              'del aporte de las mujeres.',
+  'action': 'Establecer condiciones claras de remuneración y pago, reconocer el aporte de las mujeres y '
+            'revisar su cumplimiento.',
+  'wep': 6,
+  'secondary': '',
+  'objective': 'O10, pagos y vínculo comunitario',
+  'limit': 'Identifica condiciones de remuneración y pago y reconocimiento del aporte de las mujeres. '
+           'No calcula I043, pagos por sexo ni distribución de beneficios.',
+  'gate': '',
+  'gates_any': ['tiene_proveedores', 'vinculo_comunidad'],
+  'critical': False,
+  'source_item': 'P14'},
+ {'num': 27,
+  'name': 'weps_27',
+  'dim': 3,
+  'dimension': 'Cadena de valor, proveedores, comunidades y territorio',
+  'weight': 15.0,
+  'question': 'La empresa u organización turística acuerda la difusión de los saberes ancestrales de '
+              'mujeres vinculados con la conservación y el patrimonio cultural, uso de conocimientos, '
+              'imágenes y/o expresiones culturales.',
+  'help': 'Considerar acuerdos sobre difusión de saberes ancestrales de mujeres vinculados con '
+          'conservación y patrimonio, y sobre el uso de conocimientos, imágenes o expresiones '
+          'culturales.',
+  'positive': 'Difusión de saberes ancestrales de mujeres y uso de conocimientos, imágenes o '
+              'expresiones culturales acordados.',
+  'action': 'Acordar con las mujeres involucradas la difusión de sus saberes y las condiciones de uso '
+            'de conocimientos, imágenes o expresiones culturales.',
+  'wep': 6,
+  'secondary': '',
+  'objective': 'O11, saberes y patrimonio',
+  'limit': 'Identifica acuerdos de difusión y uso de saberes, conocimientos, imágenes o expresiones '
+           'culturales. La redacción definitiva no exige condiciones adicionales de retribución. No '
+           'calcula I044/I045 o número de actividades.',
+  'gate': 'vinculo_comunidad',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P15'},
+ {'num': 36,
+  'name': 'weps_36',
+  'dim': 4,
+  'dimension': 'Experiencias turísticas con enfoque de igualdad de género',
+  'weight': 45.0,
+  'question': '¿La empresa u organización turística aplica medidas para que mujeres y hombres que '
+              'utilizan y/o visitan sus servicios tengan las mismas oportunidades de participar en las '
+              'actividades de la experiencia turística?',
+  'help': '',
+  'positive': 'Medidas para que mujeres y hombres tengan las mismas oportunidades de participar en la '
+              'experiencia turística.',
+  'action': 'Revisar las actividades de la experiencia turística y aplicar medidas que den a mujeres y '
+            'hombres las mismas oportunidades de participar.',
+  'wep': 3,
+  'secondary': '6',
+  'objective': 'O04, riesgos y experiencias seguras',
+  'limit': 'Registra si la organización declara la práctica descrita en esta pregunta.',
+  'gate': 'atiende_turistas',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P16'},
+ {'num': 37,
+  'name': 'weps_37',
+  'dim': 4,
+  'dimension': 'Experiencias turísticas con enfoque de igualdad de género',
+  'weight': 35.0,
+  'question': '¿La empresa u organización turística informa a sus visitantes sobre códigos de conducta '
+              'que promueven la igualdad y la no discriminación durante la experiencia turística?',
+  'help': '',
+  'positive': 'Visitantes informados sobre códigos de conducta que promueven igualdad y no '
+              'discriminación.',
+  'action': 'Informar a visitantes sobre los códigos de conducta que promueven la igualdad y la no '
+            'discriminación.',
+  'wep': 3,
+  'secondary': '6',
+  'objective': 'O04/O05, experiencias seguras',
+  'limit': 'Registra si la organización declara la práctica descrita en esta pregunta.',
+  'gate': 'atiende_turistas',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P17'},
+ {'num': 38,
+  'name': 'weps_38',
+  'dim': 4,
+  'dimension': 'Experiencias turísticas con enfoque de igualdad de género',
+  'weight': 15.0,
+  'question': '¿La empresa u organización turística recoge la opinión de sus visitantes, de manera '
+              'desagregada entre hombres y mujeres, para conocer su percepción sobre el acceso y '
+              'disfrute de los servicios? ¿La empresa u organización turística utiliza las opiniones de '
+              'sus visitantes para incorporar mejoras que promuevan la igualdad de género y la no '
+              'discriminación en la experiencia turística?',
+  'help': '',
+  'positive': 'Opiniones de visitantes recogidas por sexo y utilizadas para promover la igualdad y la '
+              'no discriminación.',
+  'action': 'Recoger la opinión de visitantes por sexo sobre acceso y disfrute y utilizarla para '
+            'mejorar la experiencia turística.',
+  'wep': 2,
+  'secondary': '3, 6',
+  'objective': 'Cuidados y bienestar en la experiencia turística; aporte a O04',
+  'limit': 'El indicador conserva un solo peso y requiere Sí en ambos componentes. Cada respuesta se '
+           'registra por separado.',
+  'gate': 'atiende_turistas',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P18'},
+ {'num': 23,
+  'name': 'weps_23',
+  'dim': 4,
+  'dimension': 'Experiencias turísticas con enfoque de igualdad de género',
+  'weight': 10.0,
+  'question': '¿La experiencia turística reconoce, rescata y da a conocer los aportes y saberes de las '
+              'mujeres en la historia y en la cultura local durante las actividades?',
+  'help': '',
+  'positive': 'Aportes y saberes de las mujeres en la historia y cultura local incluidos en las '
+              'actividades turísticas.',
+  'action': 'Incorporar y dar a conocer los aportes y saberes de las mujeres en la historia y cultura '
+            'local durante las actividades turísticas.',
+  'wep': 6,
+  'secondary': '',
+  'objective': 'O11, saberes y patrimonio',
+  'limit': 'Registra si la organización declara la práctica descrita en esta pregunta.',
+  'gate': 'atiende_turistas',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P19'},
+ {'num': 22,
+  'name': 'weps_22',
+  'dim': 4,
+  'dimension': 'Experiencias turísticas con enfoque de igualdad de género',
+  'weight': 20.0,
+  'question': '¿La empresa u organización turística cuenta con lineamientos para asegurar el uso de '
+              'lenguaje, imágenes y mensajes libres de estereotipos y de discriminación contra las '
+              'mujeres para presentar y desarrollar sus experiencias turísticas?',
+  'help': '',
+  'positive': 'Lineamientos para presentar y desarrollar experiencias turísticas con lenguaje, imágenes '
+              'y mensajes libres de estereotipos y discriminación contra las mujeres.',
+  'action': 'Establecer lineamientos para el uso de lenguaje, imágenes y mensajes libres de '
+            'estereotipos y discriminación contra las mujeres.',
+  'wep': 5,
+  'secondary': '7',
+  'objective': 'O08, comunicación y marketing',
+  'limit': 'Registra si la organización declara la práctica descrita en esta pregunta.',
+  'gate': '',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P20'},
+ {'num': 9,
+  'name': 'weps_09',
+  'dim': 5,
+  'dimension': 'Prevención y respuesta frente a la violencia basada en género, el acoso y la '
+               'discriminación',
+  'weight': 10.0,
+  'question': '¿La empresa u organización cuenta con una política o declaración vigente de cero '
+              'tolerancia frente a la violencia basada en género, el acoso laboral? ¿La política ha '
+              'sido aprobada y difundida?',
+  'help': '',
+  'positive': 'Política o declaración vigente de cero tolerancia a la violencia basada en género y el '
+              'acoso laboral, aprobada y difundida.',
+  'action': 'Contar con una política o declaración vigente de cero tolerancia a la violencia basada en '
+            'género y el acoso laboral, aprobarla y difundirla.',
+  'wep': 3,
+  'secondary': '2',
+  'objective': 'O05, prevención de violencia',
+  'limit': 'El indicador conserva un solo peso y requiere Sí en ambos componentes. Cada respuesta se '
+           'registra por separado.',
+  'gate': '',
+  'gates_any': [],
+  'critical': True,
+  'source_item': 'P21'},
+ {'num': 12,
+  'name': 'weps_12',
+  'dim': 5,
+  'dimension': 'Prevención y respuesta frente a la violencia basada en género, el acoso y la '
+               'discriminación',
+  'weight': 25.0,
+  'question': '¿La empresa u organización dispone de un protocolo o procedimiento escrito para prevenir '
+              'y actuar frente a violencia basada en género, acoso laboral, acoso sexual y '
+              'discriminación en el sector turismo?',
+  'help': '',
+  'positive': 'Protocolo escrito de prevención y actuación frente a violencia, acoso y discriminación.',
+  'action': 'Preparar un procedimiento escrito de prevención y actuación con pasos, responsabilidades y '
+            'rutas de apoyo.',
+  'wep': 3,
+  'secondary': '',
+  'objective': 'O05, prevención y respuesta',
+  'limit': 'Registra si la organización declara la práctica descrita en esta pregunta.',
+  'gate': '',
+  'gates_any': [],
+  'critical': True,
+  'source_item': 'P22'},
+ {'num': 15,
+  'name': 'weps_15',
+  'dim': 5,
+  'dimension': 'Prevención y respuesta frente a la violencia basada en género, el acoso y la '
+               'discriminación',
+  'weight': 25.0,
+  'question': '¿La empresa u organización turística dispone de canales de reporte accesibles y '
+              'confidenciales y rutas internas y externas de actuación y derivación para casos de '
+              'violencia de género, acoso laboral y discriminación?',
+  'help': '',
+  'positive': 'Canales accesibles y confidenciales y rutas de actuación y derivación para violencia de '
+              'género, acoso laboral y discriminación.',
+  'action': 'Definir canales accesibles y confidenciales y rutas internas y externas para casos de '
+            'violencia de género, acoso laboral y discriminación.',
+  'wep': 3,
+  'secondary': '',
+  'objective': 'O05, canales y derivación',
+  'limit': 'Registra si la organización declara la práctica descrita en esta pregunta.',
+  'gate': '',
+  'gates_any': [],
+  'critical': True,
+  'source_item': 'P23'},
+ {'num': 16,
+  'name': 'weps_16',
+  'dim': 5,
+  'dimension': 'Prevención y respuesta frente a la violencia basada en género, el acoso y la '
+               'discriminación',
+  'weight': 15.0,
+  'question': '¿La organización turística cuenta con el protocolo de actuación en casos de trata de '
+              'personas con fines de explotación sexual, con especial atención en niños/niñas y '
+              'adolescentes para reportar a las autoridades competentes?',
+  'help': '',
+  'positive': 'Protocolo para reportar a las autoridades casos de trata con fines de explotación '
+              'sexual, con especial atención a niñas, niños y adolescentes.',
+  'action': 'Establecer el protocolo para reportar a las autoridades casos de trata con fines de '
+            'explotación sexual, con especial atención a niñas, niños y adolescentes.',
+  'wep': 3,
+  'secondary': '',
+  'objective': 'O04, trata y explotación sexual',
+  'limit': 'Registra si la organización declara la práctica descrita en esta pregunta.',
+  'gate': '',
+  'gates_any': [],
+  'critical': True,
+  'source_item': 'P24'},
+ {'num': 17,
+  'name': 'weps_17',
+  'dim': 5,
+  'dimension': 'Prevención y respuesta frente a la violencia basada en género, el acoso y la '
+               'discriminación',
+  'weight': 15.0,
+  'question': '¿El personal de la empresa u organización turística y las personas responsables de '
+              'recibir reportes y activar rutas, han recibido capacitación específica durante los '
+              'últimos doce meses sobre violencia basada en género, acoso laboral, acoso sexual y/o '
+              'discriminación?',
+  'help': '',
+  'positive': 'Personal y responsables de reportes y rutas capacitados en los últimos doce meses.',
+  'action': 'Capacitar al personal y a quienes reciben reportes y activan rutas sobre violencia de '
+            'género, acoso laboral, acoso sexual y discriminación.',
+  'wep': 3,
+  'secondary': '4',
+  'objective': 'O07, formación en prevención',
+  'limit': 'Registra si la organización declara la práctica descrita en esta pregunta.',
+  'gate': '',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P25'},
+ {'num': 1,
+  'name': 'weps_01',
+  'dim': 6,
+  'dimension': 'Igualdad laboral, desarrollo profesional y trabajo digno',
+  'weight': 20.0,
+  'question': 'La empresa u organización aplica procedimientos de selección y contratación con criterios de igualdad y no discriminación. ¿La empresa u organización turística selecciona y contrata personal según los conocimientos y capacidades que requiere el trabajo?',
+  'help': '',
+  'positive': 'Selección y contratación con criterios de igualdad y no discriminación y basada en los '
+              'conocimientos y capacidades requeridos.',
+  'action': 'Aplicar criterios de igualdad y no discriminación y seleccionar según los conocimientos y '
+            'capacidades requeridos.',
+  'wep': 2,
+  'secondary': '1',
+  'objective': 'O01, selección y contratación',
+  'limit': 'El indicador conserva un solo peso y requiere Sí en ambos componentes. Cada respuesta se '
+           'registra por separado.',
+  'gate': 'emplea_personal',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P26'},
+ {'num': 2,
+  'name': 'weps_02',
+  'dim': 6,
+  'dimension': 'Igualdad laboral, desarrollo profesional y trabajo digno',
+  'weight': 15.0,
+  'question': '¿La empresa u organización aplica criterios de igualdad de género para la '
+              'promoción/ascenso y el desarrollo profesional, y analiza ascensos, cambios de cargo y '
+              'acceso a capacitación con datos desagregados por sexo?',
+  'help': '',
+  'positive': 'Promoción y desarrollo con criterios de igualdad de género y análisis de procesos por '
+              'sexo.',
+  'action': 'Aplicar criterios de igualdad de género y analizar por sexo los ascensos, cambios de cargo '
+            'y acceso a capacitación.',
+  'wep': 2,
+  'secondary': '1, 4',
+  'objective': 'O01/O06, promoción y desarrollo',
+  'limit': 'Registra si la organización declara la práctica descrita en esta pregunta.',
+  'gate': 'emplea_personal',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P27'},
+ {'num': 3,
+  'name': 'weps_03',
+  'dim': 6,
+  'dimension': 'Igualdad laboral, desarrollo profesional y trabajo digno',
+  'weight': 15.0,
+  'question': '¿La empresa u organización promueve la igualdad de género en el acceso a procesos de '
+              'capacitación y formación para fortalecer el perfil profesional?',
+  'help': 'Responder sobre oportunidades y reglas de acceso a formación, aunque la plantilla actual sea '
+          'de un solo sexo.',
+  'positive': 'Igualdad de acceso a capacitación y formación profesional.',
+  'action': 'Revisar cómo se ofrecen las oportunidades de formación para asegurar igualdad de acceso.',
+  'wep': 4,
+  'secondary': '2',
+  'objective': 'O06, desarrollo profesional',
+  'limit': 'No calcula I005 ni cobertura de formación por sexo; faltan participantes y población.',
+  'gate': 'emplea_personal',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P28'},
+ {'num': 4,
+  'name': 'weps_04',
+  'dim': 6,
+  'dimension': 'Igualdad laboral, desarrollo profesional y trabajo digno',
+  'weight': 20.0,
+  'question': '¿La empresa u organización analiza anualmente las remuneraciones para identificar y '
+              'corregir diferencias salariales entre mujeres y hombres en trabajos iguales o de igual '
+              'valor?',
+  'help': '',
+  'positive': 'Análisis anual de remuneraciones para identificar y corregir diferencias salariales en '
+              'trabajos iguales o de igual valor.',
+  'action': 'Analizar anualmente las remuneraciones para identificar y corregir diferencias salariales '
+            'en trabajos iguales o de igual valor.',
+  'wep': 2,
+  'secondary': '1',
+  'objective': 'O01, remuneración',
+  'limit': 'Registra si la organización declara la práctica descrita en esta pregunta.',
+  'gate': 'emplea_personal',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P29'},
+ {'num': 41,
+  'name': 'tv_riesgos_laborales_genero',
+  'dim': 6,
+  'dimension': 'Igualdad laboral, desarrollo profesional y trabajo digno',
+  'weight': 20.0,
+  'question': '¿La empresa u organización turística identifica si las tareas, los espacios, la carga de '
+              'trabajo o los equipos de protección presentan riesgos diferentes para mujeres y hombres? '
+              '¿La empresa u organización turística aplica medidas para prevenir los riesgos '
+              'identificados, considerando las necesidades de mujeres y hombres?',
+  'help': '',
+  'positive': 'Riesgos laborales diferenciados identificados y medidas preventivas aplicadas según las '
+              'necesidades de mujeres y hombres.',
+  'action': 'Identificar riesgos laborales diferenciados y aplicar medidas preventivas según las '
+            'necesidades de mujeres y hombres.',
+  'wep': 3,
+  'secondary': '2',
+  'objective': 'Trabajo digno, seguridad y salud laboral (aporte preventivo a O01 y O05)',
+  'limit': 'El indicador conserva un solo peso y requiere Sí en ambos componentes. Cada respuesta se '
+           'registra por separado.',
+  'gate': 'emplea_personal',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'N1'},
+ {'num': 18,
+  'name': 'weps_18',
+  'dim': 6,
+  'dimension': 'Igualdad laboral, desarrollo profesional y trabajo digno',
+  'weight': 10.0,
+  'question': '¿La empresa u organización turística realiza capacitaciones para que su personal '
+              'promueva la igualdad entre mujeres y hombres en el trabajo y en los servicios '
+              'turísticos?',
+  'help': '',
+  'positive': 'Capacitaciones al personal para promover la igualdad entre mujeres y hombres en el '
+              'trabajo y los servicios turísticos.',
+  'action': 'Realizar capacitaciones al personal para promover la igualdad entre mujeres y hombres en '
+            'el trabajo y los servicios turísticos.',
+  'wep': 4,
+  'secondary': '',
+  'objective': 'O07, formación en igualdad',
+  'limit': 'Registra si la organización declara la práctica descrita en esta pregunta.',
+  'gate': 'emplea_personal',
+  'gates_any': [],
+  'critical': False,
+  'source_item': 'P30'}]
+V19_PLAN_OPTIONS = {code: SCREENING_SPEC['plan_options'][code] for code, _, _ in PLAN_STAGES}
+V19_WEIGHT_TOTALS = {
+    dimension['id']: sum(q['weight'] for q in V19_QUESTIONS if q['dim'] == dimension['id'])
+    for dimension in V19_DIMENSIONS
+}
+
 DEFAULT_KOBO_DATA_URL = SCREENING_SPEC['export']['data_url_xlsx']
 ROUTE_LABELS = {
     'proteccion_prioritaria': 'Empezar por la protección',
     'completar_informacion': 'Completar las respuestas',
     'continuar_diagnostico': 'Revisar con más detalle',
     'continuar_acompanamiento': 'Empezar las mejoras con apoyo',
-    'no_evaluable': 'Sin resultado V18',
+    'no_evaluable': 'Sin resultado',
 }
 ROUTE_TEXT = {
     'proteccion_prioritaria': 'Conviene empezar por las medidas básicas de protección y buscar apoyo para ponerlas en marcha.',
     'completar_informacion': 'Hace falta completar o confirmar algunas respuestas antes de decidir cómo continuar.',
     'continuar_diagnostico': 'El siguiente paso es revisar los avances con más detalle y reunir los documentos que los respaldan.',
     'continuar_acompanamiento': 'Se puede empezar por una o dos mejoras, con apoyo para definir responsables y plazos.',
-    'no_evaluable': 'Hace falta revisar o completar este registro para obtener un resultado con el diagnóstico V18.',
+    'no_evaluable': 'Hace falta revisar o completar este registro para obtener un resultado con la versión correspondiente del diagnóstico.',
 }
 ROUTE_COLORS = {'proteccion_prioritaria':'#C2414A','completar_informacion':'#A16207',
                 'continuar_diagnostico':'#16815A','continuar_acompanamiento':'#75449B','no_evaluable':'#64748B'}
@@ -1190,7 +2006,16 @@ def finite_number(value: Any) -> float | None:
 def classify_record(fields: RecordFields) -> str:
     marker = text_value(fields.get('sc_version_modelo')).strip()
     if marker:
-        return 'v18' if marker == MODEL_VERSION else 'otra_version'
+        return {MODEL_VERSION: 'v18', MODEL_V19: 'v19'}.get(marker, 'otra_version')
+    new_fields = ('tv_plan_vigente', 'tv_carta_compromiso_alojamiento', *V19_PAIRS.values())
+    for name in new_fields:
+        if normalize_response(fields.get(name, aliases=[V19_FIELDS[name]])) in {'si', 'no'}:
+            return 'v19_sin_marca'
+    # A mixed export can contain empty V19 columns on historical rows.
+    # Without a marker, an empty V19 column is not evidence of the model.
+    if any(fields.has(name) or norm_text(V19_FIELDS[name]) in map(norm_text, fields.record)
+           for name in new_fields):
+        return 'version_ambigua'
     # Exports without calculates can still be identified by the four new profile
     # fields and textual binary responses. No historical maturity score is used.
     new_fields = ('tv_cuidados_comunicacion', 'tv_proveedores_respuesta_vbg', 'tv_riesgos_laborales_genero')
@@ -1201,9 +2026,9 @@ def classify_record(fields: RecordFields) -> str:
     return 'historico_o_no_identificado'
 
 
-def multiple_selection(fields: RecordFields, field: str, options: Mapping[str,str]) -> dict[str,Any]:
+def multiple_selection(fields: RecordFields, field: str, options: Mapping[str,str], *, aliases: Iterable[str] = ()) -> dict[str,Any]:
     """Read combined or expanded Kobo select_multiple exports, preserving conflicts."""
-    raw = fields.get(field)
+    raw = fields.get(field, aliases=aliases)
     supplied = bool(text_value(raw).strip()) if not isinstance(raw,(list,tuple)) else bool(raw)
     aliases = {norm_text(label): code for code,label in options.items()}
     aliases.update({norm_text(code):code for code in options})
@@ -1256,13 +2081,19 @@ def multiple_selection(fields: RecordFields, field: str, options: Mapping[str,st
     return {'selected':selected,'present':supplied or bool(expanded),'unknown':unknown,'conflict':conflict}
 
 
-def plan_diagnostic(fields: RecordFields) -> dict[str,Any]:
+def plan_diagnostic(fields: RecordFields, *, v19: bool = False) -> dict[str,Any]:
     active=normalize_response(fields.get('weps_31'))=='si'
-    selection=multiple_selection(fields,'tv_plan_etapas',SCREENING_SPEC['plan_options']) if active else {'selected':set(),'present':False,'unknown':[],'conflict':False}
+    plan_status = normalize_response(fields.get('tv_plan_vigente', aliases=[V19_FIELDS['tv_plan_vigente']])) if active and v19 else ''
+    options = V19_PLAN_OPTIONS if v19 else SCREENING_SPEC['plan_options']
+    selection=multiple_selection(fields,'tv_plan_etapas',options, aliases=[V19_FIELDS['tv_plan_etapas']] if v19 else ()) if active else {'selected':set(),'present':False,'unknown':[],'conflict':False}
     selected=selection['selected']
-    other=active and 'otra_herramienta' in selected
+    other=active and (plan_status == 'no' if v19 else 'otra_herramienta' in selected)
     invalid=bool(selection['unknown'] or selection['conflict'] or (other and len(selected)>1))
-    pending=bool(active and (not selected or 'por_verificar' in selected or invalid))
+    invalid = invalid or (active and v19 and plan_status not in {'si','no','sin_respuesta',''})
+    pending = bool(active and (
+        (plan_status != 'no' and (plan_status != 'si' or not selected) or invalid)
+        if v19 else (not selected or 'por_verificar' in selected or invalid)
+    ))
     confirmed=[code for code,_,_ in PLAN_STAGES if code in selected] if active and not other else []
     advances=[positive for code,positive,_ in PLAN_STAGES if code in confirmed]
     actions=([action.strip() for code,_,action in PLAN_STAGES if code not in selected] if not other else ['Revisar que la herramienta existente defina objetivos, acciones y responsables para la igualdad de género.']) if active else []
@@ -1270,7 +2101,7 @@ def plan_diagnostic(fields: RecordFields) -> dict[str,Any]:
     elif pending:state=f'Hay etapas pendientes de verificar. Etapas confirmadas: {len(confirmed)} de 4.'
     else:state=f'Etapas confirmadas del plan: {len(confirmed)} de 4.'
     return {**selection,'active':active,'other_tool':int(other),'pending':int(pending),'invalid':invalid,
-            'confirmed':confirmed,'count':len(confirmed),'advances':advances,'actions':actions,'state_text':state,
+            'v19':v19,'confirmed':confirmed,'count':len(confirmed),'advances':advances,'actions':actions,'state_text':state,
             'kobo_advances':''.join('• '+positive+' ' for code,positive,_ in PLAN_STAGES if code in confirmed),
             'kobo_actions':('Revisar que la herramienta existente defina objetivos, acciones y responsables para la igualdad de género.' if other else ''.join(action for code,_,action in PLAN_STAGES if code not in selected)) if active else ''}
 
@@ -1282,22 +2113,23 @@ def resolve_source_url(configured: str='') -> str:
 
 
 def calculate_screening(record: Mapping[str, Any]) -> dict[str, Any]:
-    """Reconstruct the V18 screening, then compare independently to exported sc_*.
-
-    Parameters missing from a raw-response export use the V18 defaults; invalid
-    or inconsistent weights block valuation instead of silently changing it.
-    """
+    """Recalculate each supported Kobo model and compare with exported calculations."""
     f = RecordFields(record)
     classification = classify_record(f)
+    v19 = classification in {'v19', 'v19_sin_marca'}
+    compatible = v19 or classification in {'v18', 'v18_sin_marca'}
+    version = 'V19' if v19 else ('V18' if compatible else '')
+    dimensions = V19_DIMENSIONS if v19 else DIMENSIONS
+    questions = V19_QUESTIONS if v19 else QUESTIONS
     issues: list[str] = []
     notices: list[str] = []
-    if classification == 'v18_sin_marca':
+    if classification.endswith('_sin_marca'):
         notices.append('Registro identificado por estructura y respuestas; falta la marca del modelo.')
     consent = normalize_response(f.get('consentimiento'))
     profile = {g: normalize_response(f.get(g)) for g in PROFILE_FIELDS}
     if consent != 'si': issues.append('Consentimiento no afirmativo o ausente.')
-    if classification not in {'v18','v18_sin_marca'}:
-        issues.append('Versión distinta o no identificada; no se mezcla con V18.')
+    if not compatible:
+        issues.append('Versión distinta o no identificada. Revisar la marca del modelo en Kobo.')
     missing_profile = [g for g,v in profile.items() if v not in {'si','no'}]
     if missing_profile: issues.append('Perfil de aplicación incompleto: '+', '.join(missing_profile))
     bad_parameters: list[str] = []
@@ -1313,31 +2145,48 @@ def calculate_screening(record: Mapping[str, Any]) -> dict[str, Any]:
             bad_parameters.append(name); return float(default)
         return n
 
-    dim_weights = {d['id']:parameter(f"sc_peso_d{d['id']:02d}",d['weight']) for d in DIMENSIONS}
-    q_weights = {q['name']:parameter('sc_peso_'+q['name'],q['weight']) for q in QUESTIONS}
+    dim_weights = {d['id']:parameter(f"sc_peso_d{d['id']:02d}",d['weight']) for d in dimensions}
+    q_weights = {q['name']:parameter('sc_peso_'+q['name'],q['weight']) for q in questions}
     thresholds = {key:parameter('sc_umbral_'+key,val) for key,val in [('cobertura',80),('puntaje',75),('vbg',90)]}
     if not math.isclose(sum(dim_weights.values()),100,abs_tol=1e-7): bad_parameters.append('suma de pesos de dimensiones')
-    for d in DIMENSIONS:
-        if not math.isclose(sum(q_weights[q['name']] for q in QUESTIONS if q['dim']==d['id']),100,abs_tol=1e-7):
+    for d in dimensions:
+        expected_total = V19_WEIGHT_TOTALS[d['id']] if v19 else 100
+        actual_total = sum(q_weights[q['name']] for q in questions if q['dim']==d['id'])
+        if not math.isclose(actual_total,expected_total,abs_tol=1e-7):
             bad_parameters.append(f"suma de pesos de indicadores D{d['id']}")
     if bad_parameters: issues.append('Parámetros inválidos: '+', '.join(bad_parameters))
     practices=[]
-    for q in QUESTIONS:
+    for q in questions:
         gate=q['gate']
         any_gates=q.get('gates_any',[])
         if any_gates:
             applies=True if any(profile[g]=='si' for g in any_gates) else (False if all(profile[g]=='no' for g in any_gates) else None)
         else:
             applies = (profile[gate]=='si') if gate and profile[gate] in {'si','no'} else (None if gate else True)
-        raw=f.get(q['name'],aliases=[q['question']])
-        response=normalize_response(raw)
-        if applies is True and response=='invalida': issues.append('Respuesta no reconocida: '+q['name'])
+        name = q['name']
+        label = V19_FIELDS[name] if v19 else q['question']
+        response = normalize_response(f.get(name, aliases=[label]))
+        components = []
+        extra = V19_PAIRS.get(name) if v19 else None
+        if extra:
+            extra_applies = applies
+            if name in {'weps_09', 'tv_riesgos_laborales_genero'} and response != 'si':
+                extra_applies = False
+            second = normalize_response(f.get(extra, aliases=[V19_FIELDS[extra], PREVIOUS_SELECTION_LABEL] if extra == 'tv_seleccion_competencias' else [V19_FIELDS[extra]])) if extra_applies else ''
+            components = [(name, label, response, applies), (extra, V19_FIELDS[extra], second, extra_applies)]
+            if applies is True and 'invalida' in (response, second):
+                issues.append('Respuesta no reconocida en un componente de '+name)
+            response = ('no' if 'no' in (response, second) else
+                        'si' if (response, second) == ('si','si') else 'sin_respuesta')
+        if applies is True and response=='invalida': issues.append('Respuesta no reconocida: '+name)
         status=response if applies is True else ('no_aplica' if applies is False else 'aplicabilidad_pendiente')
         action=(q['action'] if response=='no' else ('Verificar si existe la práctica: '+quote_survey(q['question']) if response not in {'si','no'} else 'Mantener la práctica y conservar evidencia.')) if applies is True else ''
-        practices.append({**q,'applies':applies,'response':response,'status':status,'weight':q_weights[q['name']],
+        messages = (q['positive'], q['action']) if v19 else QUESTION_MESSAGES[name]
+        purpose = q['limit'] if v19 else QUESTION_PURPOSES[name]
+        practices.append({**q,'messages':messages,'purpose':purpose,'components':components,'applies':applies,'response':response,'status':status,'weight':q_weights[q['name']],
                           'finding':q['positive'] if applies is True and response=='si' else '', 'next_action':action})
     dim_results=[]
-    for d in DIMENSIONS:
+    for d in dimensions:
         items=[p for p in practices if p['dim']==d['id'] and p['applies'] is True]
         known=[p for p in items if p['response'] in {'si','no'}]
         yes=[p for p in items if p['response']=='si']; no=[p for p in items if p['response']=='no']
@@ -1353,13 +2202,12 @@ def calculate_screening(record: Mapping[str, Any]) -> dict[str, Any]:
     known_dw=sum(d['weight'] for d in known_dims);active_dw=sum(d['weight'] for d in active_dims)
     score=sum(d['weight']*d['score'] for d in known_dims)/known_dw if known_dw else None
     coverage=sum(d['weight']*d['coverage'] for d in active_dims)/active_dw if active_dw else None
-    plan=plan_diagnostic(f)
+    plan=plan_diagnostic(f, v19=v19)
     if plan['invalid']:issues.append('Selección de etapas del plan inconsistente o no reconocida; verificar en Kobo.')
     critical=[p for p in practices if p['critical'] and p['applies'] is True]
     critical_no=sum(p['response']=='no' for p in critical)
     critical_pending=sum(p['response'] not in {'si','no'} for p in critical)
     vbg=next(d['score'] for d in dim_results if d['id']==5)
-    compatible=classification in {'v18','v18_sin_marca'}
     evaluable=compatible and consent=='si' and not missing_profile and not bad_parameters and not f.issues
     if not evaluable: route='no_evaluable';score=None;coverage=None
     elif critical_no: route='proteccion_prioritaria'
@@ -1377,6 +2225,16 @@ def calculate_screening(record: Mapping[str, Any]) -> dict[str, Any]:
     expected.update({'sc_indice_global':score,'sc_cobertura_global':coverage,'sc_criticos_no':critical_no,
                      'sc_criticos_pendientes':critical_pending,'sc_peso_dim_aplicable':active_dw,'sc_peso_dim_conocida':known_dw,'sc_ruta':route})
     expected.update({'sc_aplica_'+p['name']:int(p['applies'] is True) for p in practices})
+    if v19:
+        expected.update({'sc_res_'+p['name']: p['response'] if p['response'] in {'si','no'} else ''
+                         for p in practices if p['components'] and p['applies'] is True})
+    activity = norm_text(f.get('actividad_turistica'))
+    carta = None
+    if v19 and activity == 'alojamiento':
+        name = 'tv_carta_compromiso_alojamiento'
+        carta = normalize_response(f.get(name, aliases=[V19_FIELDS[name]]))
+        if carta == 'invalida':
+            issues.append('Respuesta no reconocida en la carta de compromiso de alojamiento.')
     expected.update({'sc_plan_otra_herramienta':plan['other_tool'],'sc_plan_verificacion_pendiente':plan['pending'],
                      'sc_plan_etapas_confirmadas':plan['count'],'sc_plan_avances':plan['kobo_advances'],
                      'sc_plan_acciones':plan['kobo_actions'],'sc_plan_estado_texto':plan['state_text']})
@@ -1388,6 +2246,8 @@ def calculate_screening(record: Mapping[str, Any]) -> dict[str, Any]:
            'questions':[p['name'] for p in ps]}
         transversal_results.append(t)
         expected.update({f'sc_t{tid:02d}_'+k:t[v] for k,v in [('aplicables','applicable'),('si','yes'),('no','no'),('por_verificar','unknown')]})
+        if v19:
+            expected[f'sc_t{tid:02d}_por_verificar'] = sum(p['response']=='ns' for p in ps)
     differences=[];checked=0
     if evaluable:
         for field,wanted in expected.items():
@@ -1410,7 +2270,7 @@ def calculate_screening(record: Mapping[str, Any]) -> dict[str, Any]:
     issues.extend(f.issues)
     if f.issues:
         evaluable=False;score=None;coverage=None;route='no_evaluable'
-    return {'classification':classification,'evaluable':evaluable,'score':score,'coverage':coverage,
+    return {'classification':classification,'version':version,'carta':carta,'evaluable':evaluable,'score':score,'coverage':coverage,
             'route':route,'route_label':ROUTE_LABELS[route],'route_text':ROUTE_TEXT[route],
             'dimensions':dim_results,'practices':practices,'transversals':transversal_results,'plan':plan,
             'totals':totals,'critical_no':critical_no,'critical_pending':critical_pending,
@@ -1449,31 +2309,36 @@ def date_display(record: Mapping[str, Any]) -> str:
     return d.astimezone(ZoneInfo('America/Guayaquil')).strftime('%d/%m/%Y') if d.year>1 else 'Sin fecha'
 
 
-def latest_records(records: list[dict[str,Any]]) -> list[dict[str,Any]]:
+def latest_records(records: list[dict[str,Any]], *, by_model: bool = False) -> list[dict[str,Any]]:
     # Identity uses RUC first, not just display names. Never double-count updates.
     groups={}
     for i,row in enumerate(records):
         key=company_key(row)
         if not key: continue
+        if by_model:
+            classification = classify_record(RecordFields(row))
+            key = (key, classification.removesuffix('_sin_marca'))
         previous=groups.get(key)
         if previous is None or (record_date(row),i) >= previous[:2]: groups[key]=(record_date(row),i,row)
     return [x[2] for x in groups.values()]
 
 
 def model_signature(result: dict[str,Any]) -> str:
-    payload={'dims':[(d['id'],d['weight']) for d in result['dimensions']],
+    payload={'version':result['version'],'dims':[(d['id'],d['weight']) for d in result['dimensions']],
              'questions':[(p['name'],p['weight']) for p in result['practices']], 'thresholds':result['thresholds']}
     return hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest()[:12]
 
 
-def analyze_latest(records: list[dict[str,Any]]) -> list[dict[str,Any]]:
-    return [{'record':r,'result':calculate_screening(r),'company':company_name(r),'key':company_key(r)} for r in latest_records(records)]
+def analyze_latest(records: list[dict[str,Any]], *, by_model: bool = False) -> list[dict[str,Any]]:
+    return [{'record':r,'result':calculate_screening(r),'company':company_name(r),'key':company_key(r)}
+            for r in latest_records(records, by_model=by_model)]
 
 
 def summarize(entries: list[dict[str,Any]]) -> dict[str,Any]:
     valid=[e for e in entries if e['result']['evaluable']]
     signatures={model_signature(e['result']) for e in valid}
     same_model=len(signatures)<=1
+    dimensions = valid[0]['result']['dimensions'] if valid else DIMENSIONS
     def avg(values):
         values=[v for v in values if v is not None]
         return sum(values)/len(values) if values else None
@@ -1484,14 +2349,14 @@ def summarize(entries: list[dict[str,Any]]) -> dict[str,Any]:
             'dimensions':[{'id':d['id'],'title':d['title'],
                            'score':avg([e['result']['dimensions'][d['id']-1]['score'] for e in valid]) if same_model else None,
                            'coverage':avg([e['result']['dimensions'][d['id']-1]['coverage'] for e in valid]) if same_model else None,
-                           'companies':sum(e['result']['dimensions'][d['id']-1]['score'] is not None for e in valid)} for d in DIMENSIONS],
+                           'companies':sum(e['result']['dimensions'][d['id']-1]['score'] is not None for e in valid)} for d in dimensions],
             'routes':dict(Counter(e['result']['route'] for e in valid)),
             'discrepancies':sum(bool(e['result']['differences']) for e in valid)}
 
 
 DIMENSION_SHORT_LABELS = {
     1:('Gobernanza y','liderazgo'), 2:('Cuidados y','bienestar'),
-    3:('Cadena de valor','y territorio'), 4:('Experiencias','turísticas seguras'),
+    3:('Cadena de valor','y territorio'), 4:('Experiencias','turísticas'),
     5:('Prevención de violencia,','acoso y discriminación'), 6:('Igualdad','laboral'),
 }
 
@@ -1567,10 +2432,10 @@ def diagnostic_reading(result: dict[str,Any]) -> dict[str,str]:
     if result['score'] is not None:summary+=' Teniendo en cuenta el peso de cada tema, el resultado general es '+percent(result['score'])+'.'
     # These fragments are copied literally from the survey, so quotation marks
     # distinguish them from the interpretation and recommendations that follow.
-    names={'weps_09':'política o declaración vigente de cero tolerancia',
+    names={'weps_09':'existencia, aprobación y difusión de la política de cero tolerancia' if result['version']=='V19' else 'política o declaración vigente de cero tolerancia',
            'weps_12':'protocolo o procedimiento escrito para prevenir y actuar frente a violencia basada en género',
            'weps_15':'canales de reporte accesibles y confidenciales y rutas internas y externas de actuación y derivación',
-           'weps_16':'activar la protección y comunicar a las autoridades una sospecha de trata de personas o explotación sexual de niñas, niños y adolescentes'}
+           'weps_16':'protocolo de actuación y reporte ante trata con fines de explotación sexual' if result['version']=='V19' else 'activar la protección y comunicar a las autoridades una sospecha de trata de personas o explotación sexual de niñas, niños y adolescentes'}
     missing=[quote_survey(names[p['name']]) for p in result['practices'] if p['critical'] and p['applies'] is True and p['response']=='no']
     route=result['route']
     if route=='proteccion_prioritaria':
@@ -1601,7 +2466,9 @@ def plan_presentation(result: dict[str,Any]) -> dict[str,Any]:
         summary=('La respuesta '+quote_survey('No')+' indica que la empresa todavía no cuenta con un Plan de Igualdad ni con otra herramienta de planificación para la igualdad. La primera acción es definir objetivos, acciones y responsables.' if response=='no' else 'Todavía falta confirmar si la empresa cuenta con un Plan de Igualdad u otra herramienta para organizar sus acciones de igualdad.')
         return {'intro':intro,'summary':summary,'aspects':[],'pending':True}
     if plan['other_tool']:
-        return {'intro':'En el formulario se seleccionó '+quote_survey(SCREENING_SPEC['plan_options']['otra_herramienta'])+'. La empresa indicó que utiliza otra herramienta para organizar sus acciones de igualdad de género.',
+        intro = ('La organización declaró que dispone de otra herramienta de planificación para la igualdad de género.'
+                 if plan['v19'] else 'En el formulario se seleccionó '+quote_survey(SCREENING_SPEC['plan_options']['otra_herramienta'])+'. La empresa indicó que utiliza otra herramienta para organizar sus acciones de igualdad de género.')
+        return {'intro':intro,
                 'summary':'Conviene revisar que esa herramienta identifique los objetivos de igualdad, las acciones previstas y las personas responsables de llevarlas a cabo.',
                 'aspects':[],'pending':bool(plan['pending'])}
     selected=[PLAN_DESCRIPTIONS[code][2] for code,_,_ in PLAN_STAGES if code in plan['confirmed']]
@@ -1616,14 +2483,14 @@ def plan_presentation(result: dict[str,Any]) -> dict[str,Any]:
 
 
 def question_analysis(practice: dict[str,Any], dimension: dict[str,Any]) -> dict[str,Any]:
-    purpose=QUESTION_PURPOSES[practice['name']]
+    purpose=practice['purpose']
     if practice['applies'] is not True:
         comment='Según el perfil indicado en la encuesta, esta pregunta no corresponde a la actividad de la empresa y queda fuera del resultado.' if practice['applies'] is False else 'Hace falta completar el perfil de la empresa para saber si esta pregunta corresponde a su actividad.'
     elif practice['response'] in {'si','no'}:
         if practice['response']=='si':
-            comment=QUESTION_MESSAGES[practice['name']][0]+' '+purpose
+            comment=practice['messages'][0]+' '+purpose
         else:
-            comment=purpose+' Para empezar: '+QUESTION_MESSAGES[practice['name']][1]
+            comment=purpose+' Para empezar: '+practice['messages'][1]
     else:
         comment='Antes de sacar una conclusión, conviene confirmar si esta medida ya se aplica. '+purpose
     return {'comment':comment,'response_label':RESPONSE_LABELS[practice['status']]}
@@ -1631,14 +2498,18 @@ def question_analysis(practice: dict[str,Any], dimension: dict[str,Any]) -> dict
 
 def plan_rows(result: dict[str,Any]) -> list[dict[str,Any]]:
     rows=[{'Dimensión':p['dimension'],'Pregunta':p['name'],'Práctica evaluada':p['question'],
-             'Estado':RESPONSE_LABELS[p['status']],'Avance':QUESTION_MESSAGES[p['name']][0] if p['applies'] is True and p['response']=='si' else '',
-             'Acción inicial':QUESTION_MESSAGES[p['name']][1] if p['applies'] is True and p['response']=='no' else (p['next_action'] if p['applies'] is True and p['response'] not in {'si','no'} else ''),
+             'Estado':RESPONSE_LABELS[p['status']],'Avance':p['messages'][0] if p['applies'] is True and p['response']=='si' else '',
+             'Acción inicial':p['messages'][1] if p['applies'] is True and p['response']=='no' else (p['next_action'] if p['applies'] is True and p['response'] not in {'si','no'} else ''),
              'WEP principal':p['wep'],'WEP vinculados':p['secondary'],'Objetivo del plan':p['objective'],
              'Alcance de medición':p['limit']} for p in result['practices']]
     dimensions={d['id']:d for d in result['dimensions']}
     for row,practice in zip(rows,result['practices']):
         view=question_analysis(practice,dimensions[practice['dim']])
-        row.update({'Comentario sobre la respuesta':view['comment']})
+        row.update({'Comentario sobre la respuesta':view['comment'],
+                    'Respuestas por componente': ' | '.join(
+                        f"{label} {response_display(response, applies)}"
+                        for _,label,response,applies in practice['components']
+                    )})
     plan=result['plan']
     if plan['active']:
         if plan['other_tool']:
@@ -1646,12 +2517,23 @@ def plan_rows(result: dict[str,Any]) -> list[dict[str,Any]]:
         else:
             items=[(code,positive,code in plan['confirmed'],'' if code in plan['confirmed'] else action.strip()) for code,positive,action in PLAN_STAGES]
         for code,positive,confirmed,action in items:
-            rows.append({'Dimensión':'Planificación complementaria','Pregunta':'tv_plan_etapas/'+code,
+            rows.append({'Dimensión':'Planificación complementaria','Pregunta':('tv_plan_vigente' if plan['v19'] and code=='otra_herramienta' else 'tv_plan_etapas/'+code),
                          'Práctica evaluada':positive,'Estado':'Indicado en la encuesta' if confirmed else 'Por confirmar o completar',
                          'Avance':positive if confirmed else '', 'Acción inicial':action,
                          'WEP principal':1,'WEP vinculados':'7','Objetivo del plan':QUESTION_MAP['weps_31']['objective'],
                          'Alcance de medición':'Información descriptiva de las etapas. No añade peso al índice ni mide ejecución del plan.'})
+    if result['carta'] is not None:
+        rows.append({'Dimensión':'Información de alojamiento','Pregunta':'tv_carta_compromiso_alojamiento',
+                     'Práctica evaluada':V19_FIELDS['tv_carta_compromiso_alojamiento'],
+                     'Estado':response_display(result['carta'], True),
+                     'Alcance de medición':'Información complementaria sin peso en el puntaje.'})
     return rows
+
+
+def response_display(response: str, applies: bool | None) -> str:
+    if applies is not True:
+        return 'No aplica' if applies is False else 'Aplicabilidad por confirmar'
+    return 'Sí' if response == 'si' else 'No' if response == 'no' else 'Por confirmar'
 
 
 def score_svg(score: float|None, title: str) -> str:
@@ -1730,7 +2612,8 @@ def profile_color(score: float|None) -> str:
 
 def score_matrix_html(rows: list[dict[str,Any]], label_title: str='Provincia', title: str='Resultados por provincia y dimensión') -> str:
     esc=lambda value:html.escape(text_value(value))
-    headings=''.join(f'<th scope="col" title="{esc(d["title"])}">D{d["id"]}<span>{esc(" ".join(DIMENSION_SHORT_LABELS[d["id"]]))}</span></th>' for d in DIMENSIONS)
+    dimensions = rows[0]['dimensions'] if rows else DIMENSIONS
+    headings=''.join(f'<th scope="col" title="{esc(d["title"])}">D{d["id"]}<span>{esc(" ".join(DIMENSION_SHORT_LABELS[d["id"]]))}</span></th>' for d in dimensions)
     body=[]
     def cell(value,n,general=False):
         content=esc(percent(value)) if value is not None else 'Sin dato'
@@ -1738,7 +2621,7 @@ def score_matrix_html(rows: list[dict[str,Any]], label_title: str='Provincia', t
     for row in rows:
         cells=''.join(cell(d['score'],d.get('companies',row['companies'])) for d in row['dimensions'])
         body.append('<tr'+(' class="tv-profile-total"' if row.get('total') else '')+'><th scope="row">'+esc(row['label'])+'</th><td>'+str(row['companies'])+'</td>'+cells+cell(row['score'],row['scores_n'],True)+'</tr>')
-    legend='<div class="tv-profile-key"><span style="background:#F7C27F">0 % · Menor avance</span><span style="background:#FFEEA6">50 %</span><span style="background:#97D1A7">100 % · Mayor avance</span><span style="background:#E9EDF2">Sin dato</span><br>'+' · '.join(f'D{d["id"]}: {esc(d["title"])}' for d in DIMENSIONS)+'</div>'
+    legend='<div class="tv-profile-key"><span style="background:#F7C27F">0 % · Menor avance</span><span style="background:#FFEEA6">50 %</span><span style="background:#97D1A7">100 % · Mayor avance</span><span style="background:#E9EDF2">Sin dato</span><br>'+' · '.join(f'D{d["id"]}: {esc(d["title"])}' for d in dimensions)+'</div>'
     return '<div class="tv-profile-wrap"><table class="tv-profile-table"><caption>'+esc(title)+'</caption><thead><tr><th scope="col">'+esc(label_title)+'</th><th scope="col">Empresas</th>'+headings+'<th scope="col" class="tv-profile-general">Resultado general</th></tr></thead><tbody>'+''.join(body)+'</tbody></table></div>'+legend
 
 
@@ -1774,12 +2657,15 @@ def questions_table_html(practices: list[dict[str,Any]], dimension: dict[str,Any
         color='advance' if practice['status']=='si' else ('improvement' if practice['status']=='no' else ('neutral' if practice['status']=='no_aplica' else 'verify'))
         answer=quote_survey(view['response_label']) if practice['status'] in {'si','no'} else view['response_label']
         weps=str(practice['wep'])+(' (relación con '+practice['secondary']+')' if practice['secondary'] else '')
-        weight=f"{practice['weight']:g}".replace('.',',')+' %'
+        weight = f"{practice['weight']:g}".replace('.',',') + ' puntos base'
+        detail = ''.join('<br>'+esc(label)+' <strong>'+esc(response_display(response, applies))+'</strong>'
+                         for _,label,response,applies in practice['components'])
+        question = 'Indicador con dos respuestas' if detail else quote_survey(practice['question'])
         rows.append('<tr data-question="'+esc(practice['name'])+'">'
-            '<td data-label="Pregunta"><span class="tv-question-number">'+str(position)+'.</span> '+esc(quote_survey(practice['question']))+'</td>'
+            '<td data-label="Pregunta"><span class="tv-question-number">'+str(position)+'.</span> '+esc(question)+detail+'</td>'
             '<td data-label="Respuesta"><span class="tv-response '+color+'">'+esc(answer)+'</span></td>'
             '<td data-label="Comentario y primer paso"><div class="tv-comment-copy" data-status="'+esc(practice['status'])+'">'+esc(view['comment'])+'</div></td>'
-            '<td data-label="Relación con el plan">'+esc(objective_label(practice['objective']))+'<div class="tv-question-meta">WEP: '+esc(weps)+'<br>Peso de la pregunta: '+esc(weight)+'</div></td></tr>')
+            '<td data-label="Relación con el plan">'+esc(objective_label(practice['objective']))+'<div class="tv-question-meta">WEP: '+esc(weps)+'<br>Peso base del indicador: '+esc(weight)+'</div></td></tr>')
     return '<div class="tv-questions-wrap"><table class="tv-questions-table"><colgroup><col style="width:34%"><col style="width:9%"><col style="width:40%"><col style="width:17%"></colgroup><thead><tr><th>Pregunta</th><th>Respuesta</th><th>Comentario y primer paso</th><th>Relación con el plan</th></tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>'
 
 
@@ -1789,8 +2675,8 @@ def html_report(name: str, result: dict[str,Any], record: Mapping[str,Any]) -> b
     for d in result['dimensions']:
         questions=[p for p in result['practices'] if p['dim']==d['id']]
         chart=score_svg(d['score'],'Avance en esta dimensión') if d['applicable'] else '<p>Esta dimensión no corresponde a la actividad indicada en la encuesta.</p>'
-        observations=''.join('<p class="advance">'+esc(QUESTION_MESSAGES[p['name']][0])+'</p>' for p in questions if p['applies'] is True and p['response']=='si')
-        observations+=''.join('<p class="improvement"><strong>Para empezar:</strong> '+esc(QUESTION_MESSAGES[p['name']][1])+'</p>' for p in questions if p['applies'] is True and p['response']=='no')
+        observations=''.join('<p class="advance">'+esc(p['messages'][0])+'</p>' for p in questions if p['applies'] is True and p['response']=='si')
+        observations+=''.join('<p class="improvement"><strong>Para empezar:</strong> '+esc(p['messages'][1])+'</p>' for p in questions if p['applies'] is True and p['response']=='no')
         observations+=''.join('<p class="verify"><strong>Por confirmar:</strong> '+esc(item)+'</p>' for item in d['verify'])
         blocks.append(f"<h2>{d['id']}. {esc(d['title'])}</h2><p>Avance: {percent(d['score'])}. Información respondida: {percent(d['coverage'])}.</p>{chart}{observations}<h3>Preguntas, respuestas y comentarios</h3>{questions_table_html(questions,d)}")
     links=''.join(f'<p><a href="{esc(r[1])}">{esc(r[0])}</a></p>' for r in SCREENING_SPEC['resources'])
@@ -1802,6 +2688,8 @@ def html_report(name: str, result: dict[str,Any], record: Mapping[str,Any]) -> b
         plan_block+='<article class="tv-question"><h3>'+esc(aspect['title'])+'</h3><p>'+esc(aspect['meaning'])+'</p><p class="'+('advance' if aspect['selected'] else 'verify')+'">'+esc(status)+'</p>'+next_action+'</article>'
     detail=text_value(RecordFields(record).get('tv_comunicacion_igualdad_detalle')).strip() if normalize_response(RecordFields(record).get('weps_30'))=='si' else ''
     if detail:plan_block+='<h2>Documentos mencionados en la encuesta</h2><p>'+esc(quote_survey(detail))+'</p>'
+    if result['carta'] is not None:
+        plan_block += '<h2>Información de alojamiento</h2><p>'+esc(V19_FIELDS['tv_carta_compromiso_alojamiento'])+' '+esc(response_display(result['carta'], True))+'</p>'
     overview=score_svg(result['score'],'Resultado general')
     profile=radar_svg(result['dimensions'])+score_matrix_html([profile_row(name,summarize([{'result':result}]))],label_title='Empresa',title='Resultados de las seis dimensiones')
     reading=diagnostic_reading(result)
@@ -1812,7 +2700,7 @@ def html_report(name: str, result: dict[str,Any], record: Mapping[str,Any]) -> b
     content=f'''<!doctype html><html lang="es"><meta charset="utf-8"><title>Diagnóstico Turismo Violeta</title>
 <style>body{{font:15px Georgia,serif;color:#253346;max-width:1100px;margin:35px auto;padding:0 20px}}h1,h2{{color:#542778}}table{{border-collapse:collapse;width:100%;margin:20px 0}}th,td{{border:1px solid #ddd;padding:9px;vertical-align:top;text-align:left}}th{{background:#f2eaf7}}.advance{{background:#E8F7EE;color:#145A40}}.improvement{{background:#FFF4DF;color:#854D0E}}.verify{{background:#EAF2FF;color:#1E40AF}}p.advance,p.improvement,p.verify{{padding:13px 16px;border-radius:8px}}p.improvement{{border-left:4px solid #D97706}}.neutral{{color:#64748B}}.tv-donut{{margin:12px 0;text-align:center;width:220px}}.tv-donut figcaption{{font-weight:bold}}.tv-score-row{{display:grid;grid-template-columns:minmax(240px,1.5fr) 1fr 115px;gap:16px;align-items:center;margin:16px 0}}.tv-track{{height:14px;border-radius:7px;background:#F1F3F6;overflow:hidden}}.tv-track div{{height:100%;background:#16815A}}.tv-track.unavailable{{background:#D8DDE5}}.tv-reading{{background:#FAF7FD;border-left:5px solid #75449B;padding:18px 22px;border-radius:10px;line-height:1.65;margin:20px 0}}.tv-question{{border:1px solid #E8DDF1;padding:16px 20px;margin:18px 0;border-radius:10px;break-inside:avoid}}.tv-question h3{{font-size:16px;line-height:1.55}}.tv-question-comment{{background:#FAFAFC;color:#253346;border-left:3px solid #C6B0D9;padding:14px 18px;margin:16px 0;line-height:1.6}}.tv-question-comment p{{margin:8px 0 0}}@media print{{body{{print-color-adjust:exact;-webkit-print-color-adjust:exact}}table{{font-size:10px}}h2{{break-after:avoid}}tr{{break-inside:avoid}}details table{{display:table}}}}@media(max-width:650px){{.tv-score-row{{grid-template-columns:1fr;gap:5px}}}}</style>
 <style>{QUESTIONS_TABLE_CSS}{PROFILE_CSS}</style>
-<h1>Turismo Violeta: diagnóstico inicial</h1><h2>{esc(name)}</h2><p>Fecha: {esc(date_display(record))}. Modelo: {MODEL_VERSION}.</p>
+<h1>Turismo Violeta: diagnóstico inicial</h1><h2>{esc(name)}</h2><p>Fecha: {esc(date_display(record))}. Modelo: {esc(result['version'])}.</p>
 <p>Avance inicial: <b>{percent(result['score'])}</b>. Información respondida: <b>{percent(result['coverage'])}</b>.</p>
 <div class="tv-reading"><h2>Lectura del diagnóstico</h2><p>{esc(reading['summary'])}</p><p><strong>{esc(reading['title'])}</strong></p><p>{esc(reading['action'])}</p><p>{esc(reading['information'])}</p></div>
 <p>Verde: lo que ya está en marcha. Ámbar: lo que se puede mejorar. Azul: lo que falta confirmar.</p>
@@ -2037,8 +2925,8 @@ def render_province_profile(entries: list[dict[str,Any]], key: str) -> None:
     st.plotly_chart(radar_figure(row['dimensions'],selected+': perfil de dimensiones'),width='stretch',config=CHART_CONFIG,key=key+'_radar')
     st.caption('La escala va de 0 a 100. Cuanto más lejos del centro, mayor es el avance. Una dimensión sin resultado queda sin punto; un resultado de 0 % sí se muestra en el centro.')
     st.markdown(score_matrix_html(rows),unsafe_allow_html=True)
-    st.caption('Cada celda es el promedio de las empresas con resultado en ese tema. El promedio general se calcula sobre las empresas, por lo que cada provincia puede tener un número distinto de participantes. La última columna promedia el resultado ponderado de cada empresa. Los porcentajes de las dimensiones no se suman. Fuente: encuestas de Turismo Violeta, V18.')
-    st.download_button('Descargar tabla por provincia (CSV)',csv_bytes(profile_csv_rows(rows)),file_name='resultados_provincia_dimension_V18.csv',mime='text/csv',key=key+'_province_download')
+    st.caption('Cada celda es el promedio de las empresas con resultado en ese tema. El promedio general se calcula sobre las empresas, por lo que cada provincia puede tener un número distinto de participantes. La última columna promedia el resultado ponderado de cada empresa. Los porcentajes de las dimensiones no se suman. Fuente: encuestas de Turismo Violeta.')
+    st.download_button('Descargar tabla por provincia (CSV)',csv_bytes(profile_csv_rows(rows)),file_name='resultados_provincia_dimension.csv',mime='text/csv',key=key+'_province_download')
 
 
 def route_figure(routes: dict[str,int]) -> Any:
@@ -2100,9 +2988,9 @@ def render_plan(record: Mapping[str,Any], result: dict[str,Any]) -> None:
 def render_result(entry: dict[str,Any], key: str='company') -> None:
     result=entry['result'];record=entry['record'];name=entry['company']
     st.divider();st.subheader(name or 'Resultado de la empresa')
-    st.caption('Fecha del registro: '+date_display(record))
+    st.caption('Fecha del registro: '+date_display(record)+(f" · Modelo {result['version']}" if result['version'] else ''))
     if not result['evaluable']:
-        st.info('Este registro no se puede valorar con el modelo V18. Se requiere una respuesta completa del formulario actualizado.')
+        st.info('Este registro no se puede valorar con los modelos habilitados. Se requiere una respuesta completa del formulario actualizado.')
         for issue in result['issues']:st.caption(issue)
         return
     metric_cards([('Avance inicial',percent(result['score'])),('Información respondida',percent(result['coverage'])),('Medidas por poner en marcha',result['totals']['no']),('Respuestas por confirmar',result['totals']['por_verificar'])])
@@ -2121,9 +3009,13 @@ def render_result(entry: dict[str,Any], key: str='company') -> None:
     st.subheader('Perfil de las seis dimensiones')
     st.plotly_chart(radar_figure(result['dimensions']),width='stretch',config=CHART_CONFIG,key=key+'_radar')
     st.markdown(score_matrix_html([profile_row(name,summarize([entry]))],label_title='Empresa',title='Resultados de las seis dimensiones'),unsafe_allow_html=True)
-    st.caption('La escala va de 0 a 100. Cuanto más lejos del centro, mayor es el avance. El resultado general aplica los pesos del modelo; los porcentajes de las dimensiones no se suman. Sin dato indica una dimensión sin respuestas evaluables o que no corresponde a la actividad. Fuente: encuesta de Turismo Violeta, V18.')
+    st.caption('La escala va de 0 a 100. Cuanto más lejos del centro, mayor es el avance. El resultado general aplica los pesos del modelo; los porcentajes de las dimensiones no se suman. Sin dato indica una dimensión sin respuestas evaluables o que no corresponde a la actividad. Fuente: encuesta de Turismo Violeta.')
     st.plotly_chart(practice_counts_figure(result['dimensions']),width='stretch',config=CHART_CONFIG,key=key+'_response_counts')
     render_plan(record,result)
+    if result['carta'] is not None:
+        st.subheader('Información de alojamiento')
+        st.write(V19_FIELDS['tv_carta_compromiso_alojamiento'])
+        st.info(response_display(result['carta'], True)+' · Información complementaria sin peso en el puntaje.')
     for d in result['dimensions']:
         with st.expander(f"{d['id']}. {d['title']}",expanded=True):
             questions=[p for p in result['practices'] if p['dim']==d['id']]
@@ -2141,13 +3033,13 @@ def render_result(entry: dict[str,Any], key: str='company') -> None:
                 st.markdown('**Lo que ya está en marcha**')
                 if d['advances']:
                     for p in questions:
-                        if p['applies'] is True and p['response']=='si':st.success(QUESTION_MESSAGES[p['name']][0])
+                        if p['applies'] is True and p['response']=='si':st.success(p['messages'][0])
                 else:st.write('Por ahora, las respuestas no muestran medidas en marcha en esta dimensión.')
             with right:
                 st.markdown('**Qué se puede mejorar y por dónde empezar**')
                 if d['actions']:
                     for p in questions:
-                        if p['applies'] is True and p['response']=='no':st.warning(QUESTION_MESSAGES[p['name']][1])
+                        if p['applies'] is True and p['response']=='no':st.warning(p['messages'][1])
                 else:st.write('De acuerdo con las respuestas, no hay medidas pendientes de poner en marcha en esta dimensión.')
                 if d['verify']:
                     st.markdown('**Por confirmar**')
@@ -2166,8 +3058,9 @@ def render_result(entry: dict[str,Any], key: str='company') -> None:
         if deadline in {'30','60','90'}:st.write('**Plazo de revisión:** '+deadline+' días.')
     a,b=st.columns(2)
     slug=re.sub('[^a-z0-9]+','_',norm_text(name)).strip('_')[:70] or 'empresa'
-    a.download_button('Descargar diagnóstico y acciones (HTML)',data=html_report(name,result,record),file_name=f'diagnostico_{slug}_V18.html',mime='text/html',key=key+'_html',on_click='ignore')
-    b.download_button('Descargar matriz de acciones (CSV)',data=csv_bytes(plan_rows(result)),file_name=f'acciones_{slug}_V18.csv',mime='text/csv',key=key+'_csv',on_click='ignore')
+    version = result['version']
+    a.download_button('Descargar diagnóstico y acciones (HTML)',data=html_report(name,result,record),file_name=f'diagnostico_{slug}_{version}.html',mime='text/html',key=key+'_html',on_click='ignore')
+    b.download_button('Descargar matriz de acciones (CSV)',data=csv_bytes(plan_rows(result)),file_name=f'acciones_{slug}_{version}.csv',mime='text/csv',key=key+'_csv',on_click='ignore')
     render_resources(key)
 
 
@@ -2210,25 +3103,36 @@ def render_map(entries: list[dict[str,Any]], key: str) -> None:
 
 def aggregate_practices(entries: list[dict[str,Any]]) -> list[dict[str,Any]]:
     valid=[e for e in entries if e['result']['evaluable']]
+    if not valid or len({e['result']['version'] for e in valid}) != 1:
+        return []
     rows=[]
-    for q in QUESTIONS:
+    for q in valid[0]['result']['practices']:
         items=[next(p for p in e['result']['practices'] if p['name']==q['name']) for e in valid]
         items=[p for p in items if p['applies'] is True]
         yes=sum(p['response']=='si' for p in items);no=sum(p['response']=='no' for p in items);unknown=len(items)-yes-no
         rows.append({'Dimensión':q['dim'],'Indicador':q['name'],'Práctica':q['question'],'Empresas aplicables':len(items),
                      'Sí':yes,'No':no,'Por verificar':unknown,'% Sí entre respuestas conocidas':100*yes/(yes+no) if yes+no else None,
                      'Información disponible (%)':100*(yes+no)/len(items) if items else None,
-                     'Acción inicial':QUESTION_MESSAGES[q['name']][1],'WEP principal':q['wep'],'Objetivo del plan':q['objective']})
+                     'Acción inicial':q['messages'][1],'WEP principal':q['wep'],'Objetivo del plan':q['objective']})
     return rows
 
 
+def select_model_entries(entries: list[dict[str,Any]], key: str) -> tuple[str, list[dict[str,Any]]]:
+    versions = sorted({e['result']['version'] for e in entries if e['result']['evaluable']}, reverse=True)
+    if not versions:
+        return '', []
+    version = st.selectbox('Versión del diagnóstico', versions, key=key) if len(versions)>1 else versions[0]
+    return version, [e for e in entries if e['result']['version']==version]
+
+
 def render_public_summary(entries: list[dict[str,Any]], records_n: int) -> None:
-    summary=summarize(entries);valid=summary['evaluable']
     st.subheader('Resumen público')
-    metric_cards([('Empresas con diagnóstico V18',summary['companies']),('Avance promedio',percent(summary['score'])),
+    version, cohort = select_model_entries(entries, 'public_model_version')
+    summary=summarize(cohort);valid=summary['evaluable']
+    metric_cards([('Empresas con diagnóstico '+version,summary['companies']),('Avance promedio',percent(summary['score'])),
                   ('Información respondida',percent(summary['coverage'])),('Dimensiones',6)])
-    st.caption(f"Se toma la respuesta más reciente de cada empresa. En {summary['scores_n']} empresas hay información para calcular un resultado. El promedio resume esos resultados y ayuda a comparar los avances.")
-    if not valid:st.info('Aún no hay diagnósticos V18 válidos para resumir. Los registros de otras versiones se revisan por separado en administración.');return
+    st.caption(f"Se toma la respuesta más reciente de cada empresa para la versión seleccionada. En {summary['scores_n']} empresas hay información para calcular un resultado. El promedio resume esos resultados y ayuda a comparar los avances.")
+    if not valid:st.info('Aún no hay diagnósticos válidos para resumir. Los registros de otras versiones se revisan por separado en administración.');return
     if not summary['same_parameters']:st.warning('Algunas empresas tienen pesos o criterios de cálculo distintos. Para compararlas, la administración debe elegir un mismo esquema de cálculo.')
     st.caption('Esta primera mirada se basa en lo indicado en las encuestas. El siguiente paso es revisar los avances con los documentos que los respaldan.')
     a,b=st.columns([1.3,1])
@@ -2245,7 +3149,7 @@ def render_public_summary(entries: list[dict[str,Any]], records_n: int) -> None:
 
 def company_summary_row(e: dict[str,Any]) -> dict[str,Any]:
     r=e['result']
-    return {'Empresa':e['company'],'Provincia':province_label(e['record']),'Avance (%)':r['score'],
+    return {'Empresa':e['company'],'Versión':r['version'],'Provincia':province_label(e['record']),'Avance (%)':r['score'],
             'Información respondida (%)':r['coverage'],'Siguiente paso':r['route_label'],
             'Medidas de protección pendientes':r['critical_no'],'Medidas en marcha':r['totals']['si'],
             'Medidas pendientes':r['totals']['no'],'Por confirmar':r['totals']['por_verificar'],
@@ -2265,13 +3169,14 @@ def render_admin_dashboard(entries: list[dict[str,Any]], records: list[dict[str,
     if not admin_password_matches(typed,configured):
         st.info('Ingresar la clave de administrador para continuar.');return
     with st.expander('Exportaciones de Kobo'):
-        st.write('Exportación TURISMO, con nombres XML de los campos de V18. Las descargas pueden requerir acceso a Kobo.')
+        st.write('Exportación TURISMO, con nombres XML de los campos. Las descargas pueden requerir acceso a Kobo.')
         a,b=st.columns(2)
         a.link_button('Descargar respuestas originales (Excel)',SCREENING_SPEC['export']['data_url_xlsx'])
         b.link_button('Descargar respuestas originales (CSV)',SCREENING_SPEC['export']['data_url_csv'])
     if st.button('Actualizar datos desde Kobo',key='refresh_data'):
         st.cache_data.clear();st.rerun()
-    valid=[e for e in entries if e['result']['evaluable']]
+    version, cohort = select_model_entries(entries, 'admin_model_version')
+    valid=[e for e in cohort if e['result']['evaluable']]
     historical=[e for e in entries if not e['result']['evaluable']]
     signatures=sorted({model_signature(e['result']) for e in valid})
     selected_signature=st.selectbox('Esquema de cálculo',['Todos']+signatures,key='admin_model_signature') if len(signatures)>1 else 'Todos'
@@ -2290,22 +3195,22 @@ def render_admin_dashboard(entries: list[dict[str,Any]], records: list[dict[str,
               and (not selected_provinces or province_label(e['record']) in selected_provinces)
               and e['result']['route'] in selected_routes
               and ((include_unknown and e['result']['score'] is None) or (e['result']['score'] is not None and limits[0]<=e['result']['score']<=limits[1]))]
-    st.caption(f"Los filtros muestran {len(filtered)} empresas con diagnóstico V18. En Datos y calidad se pueden revisar {len(historical)} registros que necesitan atención. En total, la fuente contiene {len(records)} envíos.")
+    st.caption(f"Los filtros muestran {len(filtered)} empresas con diagnóstico {version or 'evaluable'}. En Datos y calidad se pueden revisar {len(historical)} registros que necesitan atención. En total, la fuente contiene {len(records)} envíos.")
     view=st.radio('Vista administrativa',['Resumen general','Comparación y brechas','Detalle por empresa','Datos y calidad'],horizontal=True,key='admin_view')
     if view=='Datos y calidad':
         quality=[]
         for e in entries:
             r=e['result']
-            quality.append({'Empresa':e['company'],'Versión':r['classification'],'Valorable V18':r['evaluable'],
+            quality.append({'Empresa':e['company'],'Versión':r['classification'],'Valorable':r['evaluable'],
                             'Diferencias con Kobo':len(r['differences']),'Campos contrastados':r['checked_fields'],
                             'Observaciones':'; '.join(r['issues']+r['notices'])})
         st.dataframe(pd.DataFrame(quality),hide_index=True,width='stretch')
         discrepancy=[{'Empresa':e['company'],**diff} for e in entries for diff in e['result']['differences']]
         if discrepancy:st.dataframe(pd.DataFrame(discrepancy),hide_index=True,width='stretch')
         st.caption('Se vuelve a calcular el resultado a partir de las respuestas y se compara con los cálculos que vienen de Kobo. Solo se comparan los campos incluidos en la descarga.')
-        st.download_button('Descargar control de calidad (CSV)',csv_bytes(quality),file_name='calidad_diagnosticos_V18.csv',mime='text/csv',key='admin_quality_download')
+        st.download_button('Descargar control de calidad (CSV)',csv_bytes(quality),file_name='calidad_diagnosticos.csv',mime='text/csv',key='admin_quality_download')
         return
-    if not filtered:st.info('Los filtros no devuelven diagnósticos V18.');return
+    if not filtered:st.info('Los filtros no devuelven diagnósticos para la versión seleccionada.');return
     summary=summarize(filtered)
     if view=='Resumen general':
         metric_cards([('Empresas',len(filtered)),('Avance promedio',percent(summary['score'])),('Información respondida',percent(summary['coverage'])),('Con diferencias de cálculo',summary['discrepancies'])])
@@ -2326,8 +3231,8 @@ def render_admin_dashboard(entries: list[dict[str,Any]], records: list[dict[str,
         st.markdown('**Avances, mejoras y primeros pasos por pregunta**')
         st.dataframe(pd.DataFrame(practices),hide_index=True,width='stretch')
         a,b=st.columns(2)
-        a.download_button('Descargar comparación (CSV)',csv_bytes(table),file_name='comparacion_empresas_V18.csv',mime='text/csv',key='admin_comparison_download')
-        b.download_button('Descargar prácticas y brechas (CSV)',csv_bytes(practices),file_name='practicas_brechas_V18.csv',mime='text/csv',key='admin_practices_download')
+        a.download_button('Descargar comparación (CSV)',csv_bytes(table),file_name='comparacion_empresas.csv',mime='text/csv',key='admin_comparison_download')
+        b.download_button('Descargar prácticas y brechas (CSV)',csv_bytes(practices),file_name='practicas_brechas.csv',mime='text/csv',key='admin_practices_download')
     else:
         selected_id=st.selectbox('Empresa',range(len(filtered)),format_func=lambda i:filtered[i]['company'],key='admin_company_detail')
         render_result(filtered[selected_id],'admin_detail')
@@ -2361,11 +3266,10 @@ def main() -> None:
         if col:
             for r in records:
                 if not company_name(r):r['nombre_legal']=r.get(col)
-    entries=analyze_latest(records)
     section=st.radio('Navegación principal',['Consulta por empresa','Resumen público','Panel administrativo'],horizontal=True,label_visibility='collapsed',key='main_navigation')
-    if section=='Consulta por empresa':render_company_view(entries)
-    elif section=='Resumen público':render_public_summary(entries,len(records))
-    else:render_admin_dashboard(entries,records)
+    if section=='Consulta por empresa':render_company_view(analyze_latest(records))
+    elif section=='Resumen público':render_public_summary(analyze_latest(records, by_model=True),len(records))
+    else:render_admin_dashboard(analyze_latest(records, by_model=True),records)
 
 
 if __name__=='__main__':
